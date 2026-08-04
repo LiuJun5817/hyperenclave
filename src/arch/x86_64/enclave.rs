@@ -34,6 +34,7 @@ use x86_64::registers::rflags::RFlags;
 pub const SECS_XFRM_TEMPLATE: u64 = Xcr0::XCR0_FPU_MMX_STATE.bits() | Xcr0::XCR0_SSE_STATE.bits();
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     #[repr(transparent)]
     pub struct EnclavePFErrorCode: u32 {
         /// #PF error code defined by hardware.

@@ -31,6 +31,7 @@ pub(super) enum CpuIdEax {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     /// Copied from https://docs.rs/raw-cpuid/8.1.2/src/raw_cpuid/lib.rs.html#1290-1294
     pub(super) struct FeatureInfoFlags: u64 {
 
@@ -168,7 +169,7 @@ bitflags! {
 }
 
 pub struct CpuFeatures {
-    cpuid: CpuId,
+    cpuid: CpuId<raw_cpuid::CpuIdReaderNative>,
 }
 
 impl CpuFeatures {

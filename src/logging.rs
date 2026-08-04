@@ -223,6 +223,7 @@ lazy_static! {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     /// HyperEnclave features.
     pub struct HEFeature: u64 {
         const HHBOX_LOG        = 1 << 0;

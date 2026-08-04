@@ -22,24 +22,25 @@ epc336 = []
 epc384 = []
 
 [dependencies]
-log = "0.4"
-spin = "0.9.8"
-bitflags = "1.2"
-bit_field = "0.10"
+log = "0.4.33"
+spin = "0.12.2"
+bitflags = "2.13.1"
+bit_field = "0.10.3"
 numeric-enum-macro = "0.2"
-buddy_system_allocator = "0.5"
+paste = "1.0.15"
+buddy_system_allocator = "0.13.0"
 libvmm = { path = "./crates/libvmm", default-features = false }
 uart_16550 = { path = "./crates/uart_16550" }
-lazy_static = { version = "1.4", features = ["spin_no_std"] }
+lazy_static = { version = "1.5.0", features = ["spin_no_std"] }
 bitmap-allocator = { git = "https://github.com/rcore-os/bitmap-allocator", rev = "03bd9909" }
-sha2 = { version = "0.9.3", default-features = false, features = ["force-soft"] }
+sha2 = { version = "0.10.9", default-features = false, features = ["force-soft"] }
 cty = "0.2.1"
-cstr_core = "0.2.2"
+cstr_core = "0.2.6"
 yogcrypt = { path = "./crates/yogcrypt" }
 static_assertions = "1.1.0"
-memoffset = "0.8"
+memoffset = "0.9.1"
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
-x86 = "0.34"
-x86_64 = "0.14"
-raw-cpuid = "10.6"
+x86 = "0.52.0"
+x86_64 = { version = "0.15.5", default-features = false, features = ["instructions", "abi_x86_interrupt"] }
+raw-cpuid = "11.6.0"

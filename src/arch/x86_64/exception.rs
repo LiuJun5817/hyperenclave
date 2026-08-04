@@ -16,7 +16,7 @@ use bitflags::bitflags;
 
 use super::context::GuestRegisters;
 
-global_asm!(include_str!(concat!(env!("OUT_DIR"), "/exception.S")));
+core::arch::global_asm!(include_str!(concat!(env!("OUT_DIR"), "/exception.S")));
 
 #[allow(dead_code)]
 #[allow(non_snake_case)]
@@ -83,6 +83,7 @@ pub struct ExceptionFrame {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     /// Describes an page fault error code.
     ///
     /// This structure is defined by the following manual sections:
@@ -160,11 +161,10 @@ fn handle_page_fault(frame: &ExceptionFrame) {
     );
 }
 
-#[naked]
-#[no_mangle]
-#[inline(never)]
+#[unsafe(naked)]
+#[unsafe(no_mangle)]
 unsafe extern "sysv64" fn common_exception_entry() -> ! {
-    asm!(
+    core::arch::naked_asm!(
         save_regs_to_stack!(),
         "mov rdi, rsp",
         "call {0}",
@@ -172,6 +172,5 @@ unsafe extern "sysv64" fn common_exception_entry() -> ! {
         "add rsp, 16",  // skip num, error_code
         "iretq",
         sym exception_handler,
-        options(noreturn),
     );
 }

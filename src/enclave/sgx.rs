@@ -34,6 +34,7 @@ use crate::percpu::CpuState;
 pub type ElRange = Range<GuestVirtAddr>;
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     /// The ATTRIBUTES data structure is comprised of bit-granular fields that are used in the SECS.
     pub struct SgxAttributeFlags: u64 {
         /// This bit indicates if the enclave has been initialized by EINIT.
@@ -64,6 +65,7 @@ pub struct SgxAttributes {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     /// Flags describing the state of the enclave page.
     pub struct SgxEnclPageFlags: u8 {
         /// The page can be read from inside the enclave.
@@ -86,9 +88,8 @@ bitflags! {
 }
 
 impl SgxEnclPageFlags {
-    pub const PERM_MASK: Self = Self {
-        bits: Self::R.bits() | Self::W.bits() | Self::X.bits(),
-    };
+    pub const PERM_MASK: Self =
+        Self::from_bits_retain(Self::R.bits() | Self::W.bits() | Self::X.bits());
 }
 
 #[repr(u8)]
@@ -237,6 +238,7 @@ impl TryFrom<usize> for SgxSecInfo {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     /// Contains information about exceptions that cause AEXs.
     pub struct SgxExitInfo: u32 {
         const TYPE_HARD_EXCEPTION   = 3 << 8;
@@ -250,7 +252,7 @@ bitflags! {
 impl SgxExitInfo {
     pub fn from_vector(vector: u8) -> Self {
         use crate::arch::ExceptionType;
-        let mut info = unsafe { Self::from_bits_unchecked(vector as u32) };
+        let mut info = Self::from_bits_retain(vector as u32);
         match vector {
             ExceptionType::Breakpoint => info |= Self::TYPE_SOFT_EXCEPTION | Self::VALID,
             ExceptionType::DivideError
@@ -615,9 +617,11 @@ impl Default for SigStruct {
 
 impl Debug for SgxPcmd {
     fn fmt(&self, f: &mut Formatter) -> Result {
+        let sec_info = self.sec_info;
+        let mac = self.mac;
         f.debug_struct("SgxPcmd")
-            .field("sec_info", &self.sec_info)
-            .field("mac", &self.mac)
+            .field("sec_info", &sec_info)
+            .field("mac", &mac)
             .finish()
     }
 }

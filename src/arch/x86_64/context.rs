@@ -147,7 +147,7 @@ impl LinuxContext {
             es: Segment::from_selector(segmentation::es(), &gdt),
             fs,
             gs,
-            tss: Segment::from_selector(task::tr(), &gdt),
+            tss: Segment::from_selector(unsafe { task::tr() }, &gdt),
             gdt,
             idt: IDTStruct::sidt(),
             cr0: Cr0::read(),
@@ -227,7 +227,7 @@ impl LinuxContext {
 impl GuestRegisters {
     pub fn return_to_linux(&self, linux: &LinuxContext) -> ! {
         unsafe {
-            asm!(
+            core::arch::asm!(
                 "mov rsp, {linux_rsp}",
                 "push {linux_rip}",
                 "mov rcx, rsp",

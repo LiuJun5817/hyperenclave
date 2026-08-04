@@ -336,13 +336,11 @@ impl Enclave {
             );
         }
 
-        if !page_desc.attr.contains(EnclPageAttributes::EADD) {
+        let page_attr = page_desc.attr;
+        if !page_attr.contains(EnclPageAttributes::EADD) {
             return hypercall_hv_err_result!(
                 EINVAL,
-                format!(
-                    "Enclave::add_page(): Bad page attributes {:#x?}",
-                    page_desc.attr
-                )
+                format!("Enclave::add_page(): Bad page attributes {:#x?}", page_attr)
             );
         }
 
@@ -404,7 +402,7 @@ impl Enclave {
             );
         }
 
-        let page_data = if page_desc.attr.contains(EnclPageAttributes::EEXTEND) {
+        let page_data = if page_attr.contains(EnclPageAttributes::EEXTEND) {
             Some(unsafe { &*(phys_to_virt(gpaddr) as *mut [u8; PAGE_SIZE]) })
         } else {
             None
@@ -740,16 +738,18 @@ impl Enclave {
 
         let nonce = va_slot.get();
         let time_nonce = now.elapsed();
-        let mut alg = reclaim::create_alg_instance(&nonce, self.id, &metadata.sec_info, gvaddr);
-        alg.decrypt_and_hmac_page(gpaddr_src, gpaddr_dst, &metadata.mac)?;
+        let sec_info = metadata.sec_info;
+        let mac = metadata.mac;
+        let mut alg = reclaim::create_alg_instance(&nonce, self.id, &sec_info, gvaddr);
+        alg.decrypt_and_hmac_page(gpaddr_src, gpaddr_dst, &mac)?;
         let time_dec_and_hmac = now.elapsed();
 
-        EpcmManager::add_page(gvaddr, gpaddr_dst, &metadata.sec_info, self)?;
+        EpcmManager::add_page(gvaddr, gpaddr_dst, &sec_info, self)?;
         let time_add_page = now.elapsed();
 
-        let gpt_flags = metadata.sec_info.into();
+        let gpt_flags = sec_info.into();
 
-        if metadata.sec_info.page_type == SgxEnclPageType::REG {
+        if sec_info.page_type == SgxEnclPageType::REG {
             let npt_flags = (gpt_flags - MemFlags::NO_PRESENT) | MemFlags::ENCRYPTED;
             self.npt.write().map(&MemoryRegion::new_with_offset_mapper(
                 gpaddr_dst, gpaddr_dst, PAGE_SIZE, npt_flags,

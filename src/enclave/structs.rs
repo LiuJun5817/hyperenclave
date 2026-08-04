@@ -23,6 +23,7 @@ use crate::enclave::sgx::SgxSecs;
 use crate::memory::GuestPhysAddr;
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     /// Possible attributes for an enclave page.
     pub struct EnclPageAttributes: u32 {
         const EADD          = 1 << 0;

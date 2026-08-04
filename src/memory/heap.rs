@@ -23,7 +23,7 @@ use crate::memory::addr::{align_up, is_aligned, virt_to_phys};
 use crate::memory::HostVirtAddr;
 
 #[cfg_attr(not(test), global_allocator)]
-static HEAP_ALLOCATOR: LockedHeap = LockedHeap::new();
+static HEAP_ALLOCATOR: LockedHeap<32> = LockedHeap::new();
 
 /// Initialize the global heap allocator.
 pub(super) fn init() {

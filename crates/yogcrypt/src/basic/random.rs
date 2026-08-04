@@ -18,7 +18,7 @@ use core::cmp;
 use core::fmt;
 use core::mem;
 
-global_asm!(include_str!("rand.S"), options(att_syntax));
+core::arch::global_asm!(include_str!("rand.S"), options(att_syntax));
 
 #[inline]
 fn getrandom(buf: &mut [u8]) {

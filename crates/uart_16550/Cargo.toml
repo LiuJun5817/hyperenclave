@@ -8,13 +8,13 @@ repository = "https://github.com/rust-osdev/uart_16550"
 edition = "2018"
 
 [dependencies]
-bitflags = "1.1.0"
-x86_64 = { version = "0.14.0", default-features = false, features = ["instructions"] }
+bitflags = "2.13.1"
+x86_64 = { version = "0.15.5", default-features = false, features = ["instructions"] }
 
 [features]
 default = [ "nightly" ]
-stable = [ "x86_64/external_asm" ]
-nightly = [ "x86_64/inline_asm" ]
+stable = []
+nightly = []
 
 [package.metadata.release]
 no-dev-version = true

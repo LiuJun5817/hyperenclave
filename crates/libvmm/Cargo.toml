@@ -12,13 +12,13 @@ vmx = ["libvmm_macros/vmx"]
 svm = []
 
 [dependencies]
-bitflags = "1.0.4"
-bit_field = "0.10"
+bitflags = "2.13.1"
+bit_field = "0.10.3"
 numeric-enum-macro = "0.2"
 libvmm_macros = { path = "./libvmm_macros", version = "0.1.0" }
 
 [dev-dependencies]
-memoffset = "0.6"
+memoffset = "0.9.1"
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
-x86 = "0.34"
+x86 = "0.52.0"

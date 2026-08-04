@@ -83,6 +83,7 @@ struct VtdMmioRegion {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     struct CmdStsFlags:u32{
         /// Compatiblity Interrupt Format
         const CFI   =  1 << 23;
@@ -132,6 +133,7 @@ impl VtdMmioRegion {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     struct IoPTFlags:u64{
         const READ  = 1 << 0;
         const WRITE = 1 << 1;
@@ -262,6 +264,7 @@ impl fmt::Debug for IoPTEntry {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     struct ContextEntryFlags:u64{//not directly corresponding to Context Entry bits, use set_flags()/get_flags()
         /// Present
         const P = 1 << 0;

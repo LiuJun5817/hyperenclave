@@ -15,6 +15,7 @@
 use crate::ffi::HEADER_PTR;
 use crate::logging::HEFeature;
 use crate::memory::HostVirtAddr;
+#[cfg(not(test))]
 use crate::percpu::PER_CPU_SIZE;
 
 include!(concat!(env!("OUT_DIR"), "/version.rs"));
@@ -69,6 +70,7 @@ impl HvHeader {
     }
 }
 
+#[cfg(not(test))]
 #[repr(C)]
 struct HvHeaderStuff {
     signature: [u8; 8],
@@ -93,11 +95,13 @@ struct HvHeaderStuff {
     nr_init_epc: u32,
 }
 
+#[cfg(not(test))]
 extern "C" {
     fn __entry_offset();
     fn __core_size();
 }
 
+#[cfg(not(test))]
 #[used]
 #[link_section = ".header"]
 static HEADER_STUFF: HvHeaderStuff = HvHeaderStuff {
@@ -123,6 +127,7 @@ static HEADER_STUFF: HvHeaderStuff = HvHeaderStuff {
     nr_init_epc: 0,
 };
 
+#[cfg(not(test))]
 static_assertions::const_assert_eq!(
     core::mem::size_of::<HvHeaderStuff>(),
     core::mem::size_of::<HvHeader>()

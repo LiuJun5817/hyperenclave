@@ -49,6 +49,6 @@ fn vmx_capture_status() -> Result<()> {
 /// through execution.
 pub unsafe fn invept(invalidation: InvEptType, eptp: u64) -> Result<()> {
     let descriptor = InvEptDescriptor::new(eptp);
-    asm!("invept {}, [{}]", in(reg) invalidation as u64, in(reg) &descriptor);
+    core::arch::asm!("invept {}, [{}]", in(reg) invalidation as u64, in(reg) &descriptor);
     vmx_capture_status()
 }

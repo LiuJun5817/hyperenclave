@@ -3,12 +3,12 @@
 //! # Usage
 //!
 //! ```no_run
-//! use uart_16550::SerialPort;
+//! use uart_16550::{BaudRate, SerialPort};
 //!
 //! const SERIAL_IO_PORT: u16 = 0x3F8;
 //!
 //! let mut serial_port = unsafe { SerialPort::new(SERIAL_IO_PORT) };
-//! serial_port.init();
+//! serial_port.init(BaudRate::Baud115200);
 //!
 //! // Now the serial port is ready to be used. To send a byte:
 //! serial_port.send(42);
@@ -33,6 +33,7 @@ macro_rules! wait_for {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     /// Interrupt enable flags
     struct IntEnFlags: u8 {
         const RECEIVED = 1;
@@ -44,6 +45,7 @@ bitflags! {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     /// Line status flags
     struct LineStsFlags: u8 {
         const INPUT_FULL = 1;
@@ -106,7 +108,7 @@ pub enum BaudRate {
     /// desired baud rate.
     ///
     /// ```no_run
-    /// uart_16440::BaudRate::BaudOther(4_000_000); // 4,000,000 baud
+    /// uart_16550::BaudRate::BaudOther(4_000_000); // 4,000,000 baud
     /// ```
     ///
     /// Non-standard baud rates may not be supported on all systems.
@@ -125,7 +127,7 @@ impl BaudRate {
     /// ## Example
     ///
     /// ```
-    /// # use serial_core::BaudRate;
+    /// # use uart_16550::BaudRate;
     /// assert_eq!(BaudRate::Baud9600, BaudRate::from_speed(9600));
     /// assert_eq!(BaudRate::Baud115200, BaudRate::from_speed(115200));
     /// assert_eq!(BaudRate::BaudOther(4000000), BaudRate::from_speed(4000000));
@@ -152,7 +154,7 @@ impl BaudRate {
     /// ## Example
     ///
     /// ```
-    /// # use serial_core::BaudRate;
+    /// # use uart_16550::BaudRate;
     /// assert_eq!(9600, BaudRate::Baud9600.speed());
     /// assert_eq!(115200, BaudRate::Baud115200.speed());
     /// assert_eq!(4000000, BaudRate::BaudOther(4000000).speed());

@@ -20,6 +20,7 @@ use bitflags::bitflags;
 use crate::x86_64::msr::{Msr, MsrReadWrite};
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     /// 24.6.1 Pin-Based VM-Execution Controls.
     pub struct PinVmExecControls: u32 {
         /// VM-Exit on vectored interrupts
@@ -37,6 +38,7 @@ bitflags! {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     /// 24.6.2 Primary Processor-Based VM-Execution Controls.
     pub struct PrimaryVmExecControls: u32 {
         /// VM-Exit if INTRs are unblocked in guest
@@ -85,6 +87,7 @@ bitflags! {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     /// 24.6.2 Secondary Primary Processor-Based VM-Execution Controls.
     pub struct SecondaryVmExecControls: u32 {
         /// Virtualize memory mapped APIC accesses
@@ -144,6 +147,7 @@ bitflags! {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     /// 24.7.1 VM-Exit Controls.
     pub struct VmExitControls: u32 {
         const SAVE_DEBUG_CONTROLS           = 1 <<  2;
@@ -169,6 +173,7 @@ bitflags! {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     /// 24.8.1 VM-Entry Controls.
     pub struct VmEntryControls: u32 {
         const LOAD_DEBUG_CONTROLS           = 1 <<  2;
@@ -188,6 +193,7 @@ bitflags! {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     /// Contains the address of the base of EPT PML4 table, as well as other EPT
     /// configuration information.
     pub struct EptpFlags: u64 {
@@ -211,6 +217,7 @@ bitflags! {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     /// MSR_IA32_VMX_EPT_VPID_CAP.
     /// The capabilities of the logical processor with regard to
     /// virtual-processor identifiers and extended page tables.
@@ -249,6 +256,7 @@ bitflags! {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     /// MSR_IA32_FEATURE_CONTROL flags.
    pub struct VmxBasicFlags: u64 {
        /// The processor reports information in the VM-exit instruction-
@@ -295,6 +303,7 @@ impl VmxBasic {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     /// MSR_IA32_FEATURE_CONTROL flags.
     pub struct FeatureControlFlags: u64 {
        /// Lock bit: when set, locks this MSR from being written.
@@ -329,6 +338,7 @@ impl FeatureControl {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     /// This field provides details about the event to be injected.
     pub struct InterruptInfo: u32 {
         /// Deliver error code
@@ -401,7 +411,7 @@ impl InterruptInfo {
     pub fn from(int_type: InterruptType, vector: u8) -> Self {
         let mut bits = vector as u32;
         bits.set_bits(8..11, int_type as u32);
-        let mut info = unsafe { Self::from_bits_unchecked(bits) } | Self::VALID;
+        let mut info = unsafe { Self::from_bits_retain(bits) } | Self::VALID;
         if Self::has_error_code(vector) {
             info |= Self::ERROR_CODE;
         }

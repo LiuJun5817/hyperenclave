@@ -46,11 +46,11 @@ const CACHE_LINE_SIZE: usize = 64;
 pub fn clflush_cache_range(vaddr: usize, length: usize) {
     // clflush is an unordered instruction which needs fencing with mfence or
     // sfence to avoid ordering issues.
-    unsafe { asm!("mfence") };
+    unsafe { core::arch::asm!("mfence") };
     for addr in (vaddr..(vaddr + length)).step_by(CACHE_LINE_SIZE) {
         unsafe {
             core::arch::x86_64::_mm_clflush(addr as *const u8);
         }
     }
-    unsafe { asm!("mfence") };
+    unsafe { core::arch::asm!("mfence") };
 }

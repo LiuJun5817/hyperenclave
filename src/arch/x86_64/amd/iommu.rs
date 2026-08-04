@@ -72,6 +72,7 @@ struct IommuMmioRegion {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     struct IommuControlFlags: u64 {
         /// IOMMU enable.
         const IOMMU_EN =        1 << 0;
@@ -95,6 +96,7 @@ bitflags! {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     struct IoPTFlags: u64 {
         /// Valid.
         const V =       1 << 0;

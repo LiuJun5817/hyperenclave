@@ -29,6 +29,7 @@ use crate::memory::{
 use crate::memory::{PagingError, PagingResult};
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     struct EPTFlags: u64 {
         /// Read access.
         const READ =                1 << 0;

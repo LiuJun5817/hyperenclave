@@ -43,6 +43,7 @@ pub use paging::{PagingError, PagingResult};
 pub const PAGE_SIZE: usize = paging::PageSize::Size4K as usize;
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct MemFlags: u64 {
         const READ          = 1 << 0;
         const WRITE         = 1 << 1;

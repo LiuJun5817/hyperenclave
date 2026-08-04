@@ -150,7 +150,7 @@ impl PerCpu {
         let local_cpu_data = Self::from_local_base_mut();
         let old_percpu_vaddr = self as *const _ as usize;
         // Switch stack to the private mapping.
-        unsafe { asm!("add rsp, {}", in(reg) LOCAL_PER_CPU_BASE - old_percpu_vaddr) };
+        unsafe { core::arch::asm!("add rsp, {}", in(reg) LOCAL_PER_CPU_BASE - old_percpu_vaddr) };
         local_cpu_data.hvm.delete(old_percpu_vaddr)?;
         local_cpu_data.hvm.page_table().flush(None);
         local_cpu_data.activate_vmm_local()
@@ -175,7 +175,9 @@ impl PerCpu {
             MemFlags::READ | MemFlags::WRITE | MemFlags::ENCRYPTED,
         ))?;
         self.hvm.page_table().flush(None);
-        unsafe { asm!("add rsp, {}", in(reg) common_percpu_vaddr - LOCAL_PER_CPU_BASE) };
+        unsafe {
+            core::arch::asm!("add rsp, {}", in(reg) common_percpu_vaddr - LOCAL_PER_CPU_BASE)
+        };
         common_cpu_data.deactivate_vmm_common()
     }
 

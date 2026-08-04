@@ -24,7 +24,7 @@ use crate::stats::Instant;
 
 impl VmExit<'_> {
     fn handle_nmi(&mut self) -> HvResult {
-        unsafe { asm!("cli; stgi; clgi; sti") };
+        unsafe { core::arch::asm!("cli; stgi; clgi; sti") };
         Ok(())
     }
 

@@ -21,6 +21,7 @@ use x86_64::structures::DescriptorTablePointer;
 use super::tables::GDTStruct;
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     /// Access rights for VMCS guest register states.
     ///
     /// The low 16 bits correspond to bits 23:8 of the upper 32 bits of a 64-bit

@@ -18,7 +18,7 @@ unsafe extern "sysv64" fn switch_stack(cpu_id: usize, linux_sp: usize) -> i32 {
     let cpu_data = PerCpu::from_id(cpu_id);
     let hv_sp = cpu_data.stack_top();
     let mut ret;
-    asm!("
+    core::arch::asm!("
         mov rcx, rsp
         mov rsp, {0}
         push rcx
@@ -33,10 +33,10 @@ unsafe extern "sysv64" fn switch_stack(cpu_id: usize, linux_sp: usize) -> i32 {
     ret
 }
 
-#[naked]
-#[no_mangle]
+#[unsafe(naked)]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn arch_entry(_cpu_id: usize) -> i32 {
-    asm!("
+    core::arch::naked_asm!("
         // rip is pushed
         cli
         push rbp
@@ -58,6 +58,5 @@ pub unsafe extern "C" fn arch_entry(_cpu_id: usize) -> i32 {
         ret
         // rip will pop when return",
         sym switch_stack,
-        options(noreturn),
     );
 }

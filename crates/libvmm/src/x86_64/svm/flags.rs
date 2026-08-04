@@ -20,6 +20,7 @@ use bitflags::bitflags;
 use crate::x86_64::msr::{Msr, MsrReadWrite};
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     /// VM_CR MSR flags.
    pub struct VmCrFlags: u64 {
        /// If set, disables HDT and certain internal debug features.
@@ -59,6 +60,7 @@ impl VmCr {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     /// The VMCB Clean field (VMCB offset 0C0h, bits 31:0) controls which guest
     /// register values are loaded from the VMCB state cache on VMRUN.
    pub struct VmcbCleanBits: u32 {
@@ -96,6 +98,7 @@ bitflags! {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     /// EXITINTINFO/EVENTINJ field in the VMCB.
     pub struct VmcbIntInfo: u32 {
         /// Error Code Valid
@@ -136,7 +139,7 @@ impl VmcbIntInfo {
     pub fn from(int_type: InterruptType, vector: u8) -> Self {
         let mut bits = vector as u32;
         bits.set_bits(8..11, int_type as u32);
-        let mut info = unsafe { Self::from_bits_unchecked(bits) } | Self::VALID;
+        let mut info = Self::from_bits_retain(bits) | Self::VALID;
         if Self::has_error_code(vector) {
             info |= Self::ERROR_CODE;
         }

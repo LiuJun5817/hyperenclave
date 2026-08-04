@@ -34,7 +34,7 @@ impl VmExit<'_> {
         );
         match intr_info.vector {
             ExceptionType::NonMaskableInterrupt => unsafe {
-                asm!("int {}", const ExceptionType::NonMaskableInterrupt)
+                core::arch::asm!("int {}", const ExceptionType::NonMaskableInterrupt)
             },
             vec => {
                 let error_code = if ExceptionType::has_error_code(vec) {
@@ -128,7 +128,7 @@ impl VmExit<'_> {
                         return hv_result_err!(EINVAL);
                     }
                 };
-                unsafe { asm!("mov cr2, {}", in(reg) cr2) };
+                unsafe { core::arch::asm!("mov cr2, {}", in(reg) cr2) };
             }
         }
 

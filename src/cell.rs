@@ -91,20 +91,22 @@ impl Cell {
 
         // all physical memory regions
         for region in sys_config.mem_regions() {
+            let phys_start = region.phys_start;
+            let virt_start = region.virt_start;
+            let size = region.size;
+            let flags = region.flags;
             let r = MemoryRegion::new_with_offset_mapper(
-                region.virt_start as GuestPhysAddr,
-                region.phys_start as HostPhysAddr,
-                region.size as usize,
-                region.flags - MemFlags::ENCRYPTED, // guest should not read decrypted data
+                virt_start as GuestPhysAddr,
+                phys_start as HostPhysAddr,
+                size as usize,
+                flags - MemFlags::ENCRYPTED, // guest should not read decrypted data
             );
-            if region.flags.contains(MemFlags::DMA) {
+            if flags.contains(MemFlags::DMA) {
                 dma_regions.insert(r.clone())?;
             } else {
                 for rmrr_range in sys_config.rmrr_ranges() {
                     //if region contains rmrr_range
-                    if region.phys_start <= rmrr_range.base
-                        && rmrr_range.limit <= region.phys_start + region.size
-                    {
+                    if phys_start <= rmrr_range.base && rmrr_range.limit <= phys_start + size {
                         dma_regions.insert(r.clone())?;
                         break;
                     }
@@ -143,21 +145,22 @@ impl Cell {
 
         // guest RAM
         for region in sys_config.mem_regions() {
-            if region.flags.contains(MemFlags::DMA) {
-                let hv_virt_start = phys_to_virt(region.virt_start as GuestPhysAddr);
-                if hv_virt_start < region.virt_start as GuestPhysAddr {
+            let phys_start = region.phys_start;
+            let virt_start = region.virt_start;
+            let size = region.size;
+            let flags = region.flags;
+            if flags.contains(MemFlags::DMA) {
+                let hv_virt_start = phys_to_virt(virt_start as GuestPhysAddr);
+                if hv_virt_start < virt_start as GuestPhysAddr {
                     return hv_result_err!(
                         EINVAL,
-                        format!(
-                            "Guest physical address {:#x} is too large",
-                            region.virt_start
-                        )
+                        format!("Guest physical address {:#x} is too large", virt_start)
                     );
                 }
                 hvm.insert(MemoryRegion::new_with_offset_mapper(
                     hv_virt_start,
-                    region.phys_start as HostPhysAddr,
-                    region.size as usize,
+                    phys_start as HostPhysAddr,
+                    size as usize,
                     MemFlags::READ | MemFlags::WRITE,
                 ))?;
                 // Support hardware encrypt when swap out EPC page to guest RAM

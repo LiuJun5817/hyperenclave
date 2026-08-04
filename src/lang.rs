@@ -45,7 +45,7 @@ fn panic(info: &PanicInfo) -> ! {
     loop {}
 }
 
-#[lang = "oom"]
+#[alloc_error_handler]
 fn oom(_: Layout) -> ! {
     panic!("out of memory");
 }

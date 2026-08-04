@@ -54,14 +54,13 @@ lazy_static! {
 }
 
 macro_rules! set_guest_segment {
-    ($seg: expr, $reg: ident) => {{
-        use VmcsField16Guest::*;
-        use VmcsField32Guest::*;
-        use VmcsField64Guest::*;
-        concat_idents!($reg, _SELECTOR).write($seg.selector.bits())?;
-        concat_idents!($reg, _BASE).write($seg.base)?;
-        concat_idents!($reg, _LIMIT).write($seg.limit)?;
-        concat_idents!($reg, _AR_BYTES).write($seg.access_rights.bits())?;
+    ($seg:expr, $reg:ident) => {{
+        paste::paste! {
+            VmcsField16Guest::[<$reg _SELECTOR>].write($seg.selector.bits())?;
+            VmcsField64Guest::[<$reg _BASE>].write($seg.base)?;
+            VmcsField32Guest::[<$reg _LIMIT>].write($seg.limit)?;
+            VmcsField32Guest::[<$reg _AR_BYTES>].write($seg.access_rights.bits())?;
+        }
     }};
 }
 
@@ -143,7 +142,7 @@ impl Vcpu {
         regs.r14 = linux.r14;
         regs.r15 = linux.r15;
         unsafe {
-            asm!(
+            core::arch::asm!(
                 "mov rsp, {0}",
                 restore_regs_from_stack!(),
                 "vmlaunch",
@@ -485,11 +484,11 @@ impl Debug for Vcpu {
                 .field("rip", &self.instr_pointer())
                 .field("rsp", &self.stack_pointer())
                 .field("rflags", unsafe {
-                    &RFlags::from_bits_unchecked(self.rflags())
+                    &RFlags::from_bits_retain(self.rflags())
                 })
-                .field("cr0", unsafe { &Cr0Flags::from_bits_unchecked(self.cr(0)) })
+                .field("cr0", unsafe { &Cr0Flags::from_bits_retain(self.cr(0)) })
                 .field("cr3", &self.cr(3))
-                .field("cr4", unsafe { &Cr4Flags::from_bits_unchecked(self.cr(4)) })
+                .field("cr4", unsafe { &Cr4Flags::from_bits_retain(self.cr(4)) })
                 .field("cs", &VmcsField16Guest::CS_SELECTOR.read()?)
                 .field("fs_base", &VmcsField64Guest::FS_BASE.read()?)
                 .field("gs_base", &VmcsField64Guest::GS_BASE.read()?)
@@ -500,9 +499,9 @@ impl Debug for Vcpu {
     }
 }
 
-#[naked]
+#[unsafe(naked)]
 unsafe extern "sysv64" fn vmx_exit() -> ! {
-    asm!(
+    core::arch::naked_asm!(
         save_regs_to_stack!(),
         "mov r15, rsp",         // save temporary RSP to r15
         "mov rsp, [rsp + {0}]", // set RSP to Vcpu::host_stack_top
@@ -514,7 +513,6 @@ unsafe extern "sysv64" fn vmx_exit() -> ! {
         const core::mem::size_of::<GuestRegisters>(),
         sym crate::arch::vmm::vmexit_handler,
         sym vmresume_failed,
-        options(noreturn),
     );
 }
 
