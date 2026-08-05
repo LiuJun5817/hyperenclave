@@ -39,6 +39,8 @@ cstr_core = "0.2.6"
 yogcrypt = { path = "./crates/yogcrypt" }
 static_assertions = "1.1.0"
 memoffset = "0.9.1"
+vstd = { version = "0.0.0-2025-08-12-1837", default-features = false, features = ["alloc"] }
+verified-hv-mem = { git = "https://github.com/LiuJun5817/verified-hv-mem", rev = "84db190" }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 x86 = "0.52.0"

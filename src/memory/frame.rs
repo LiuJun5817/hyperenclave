@@ -14,10 +14,6 @@
 
 //! Physical memory allocation.
 
-use bitmap_allocator::BitAlloc;
-
-use spin::Mutex;
-
 use super::addr::{align_down, align_up, is_aligned, phys_encrypted, phys_to_virt, PhysAddr};
 use crate::config::HvSystemConfig;
 use crate::consts::{PAGE_SIZE, PER_CPU_SIZE};
@@ -27,12 +23,19 @@ use crate::memory::addr::virt_to_phys;
 use crate::memory::cmr::{CMRM_SIZE_ALIGNED, CMRM_START_HVA};
 use crate::memory::HV_HEAP_SIZE;
 
-// Support max 1M * 4096 = 4GB memory.
-type FrameAlloc = bitmap_allocator::BitAlloc1M;
+use spin::Once;
+use vstd::prelude::Tracked;
 
-struct FrameAllocator {
-    base: PhysAddr,
-    inner: FrameAlloc,
+use verified_hv_mem::{address::addr::PAddr, global_allocator::GbAlloc};
+
+static GB_ALLOCATOR: Once<GbAlloc> = Once::new();
+
+pub fn init_global_allocator(base: PhysAddr) -> &'static GbAlloc {
+    GB_ALLOCATOR.call_once(|| GbAlloc::default(PAddr(base)))
+}
+
+pub fn gb_allocator() -> &'static GbAlloc {
+    GB_ALLOCATOR.get().expect("GB_ALLOCATOR is not initialized")
 }
 
 /// A safe wrapper for physical frame allocation.
@@ -42,88 +45,15 @@ pub struct Frame {
     frame_count: usize,
 }
 
-static FRAME_ALLOCATOR: Mutex<FrameAllocator> = Mutex::new(FrameAllocator::empty());
-
-impl FrameAllocator {
-    const fn empty() -> Self {
-        Self {
-            base: 0,
-            inner: FrameAlloc::DEFAULT,
-        }
-    }
-
-    fn new(base: PhysAddr, size: usize) -> Self {
-        let mut inner = FrameAlloc::DEFAULT;
-        let base = align_up(base);
-        let page_count = align_up(size) / PAGE_SIZE;
-        inner.insert(0..page_count);
-        Self { base, inner }
-    }
-
-    /// # Safety
-    ///
-    /// This function is unsafe because you need to deallocate manually.
-    unsafe fn alloc(&mut self) -> Option<PhysAddr> {
-        let ret = self.inner.alloc().map(|idx| idx * PAGE_SIZE + self.base);
-        trace!("Allocate frame: {:x?}", ret);
-        ret
-    }
-
-    /// # Safety
-    ///
-    /// This function is unsafe because your need to deallocate manually.
-    unsafe fn alloc_contiguous(
-        &mut self,
-        frame_count: usize,
-        align_log2: usize,
-    ) -> Option<PhysAddr> {
-        let ret = self
-            .inner
-            .alloc_contiguous(frame_count, align_log2)
-            .map(|idx| idx * PAGE_SIZE + self.base);
-        trace!(
-            "Allocate {} frames with alignment {}: {:x?}",
-            frame_count,
-            1 << align_log2,
-            ret
-        );
-        ret
-    }
-
-    /// # Safety
-    ///
-    /// This function is unsafe because the frame must have been allocated.
-    unsafe fn dealloc(&mut self, target: PhysAddr) {
-        trace!("Deallocate frame: {:x}", target);
-        self.inner.dealloc((target - self.base) / PAGE_SIZE)
-    }
-
-    /// # Safety
-    ///
-    /// This function is unsafe because the frames must have been allocated.
-    unsafe fn dealloc_contiguous(&mut self, target: PhysAddr, frame_count: usize) {
-        trace!("Deallocate {} frames: {:x}", frame_count, target);
-        let start_idx = (target - self.base) / PAGE_SIZE;
-        for i in start_idx..start_idx + frame_count {
-            self.inner.dealloc(i)
-        }
-    }
-}
-
 #[allow(dead_code)]
 impl Frame {
     /// Allocate one physical frame.
     pub fn new() -> HvResult<Self> {
-        unsafe {
-            FRAME_ALLOCATOR
-                .lock()
-                .alloc()
-                .map(|start_paddr| Self {
-                    start_paddr,
-                    frame_count: 1,
-                })
-                .ok_or(hv_err!(ENOMEM))
-        }
+        let (start_paddr, _) = gb_allocator().alloc(Tracked::assume_new());
+        Ok(Self {
+            start_paddr: start_paddr.0,
+            frame_count: 1,
+        })
     }
 
     /// Allocate one physical frame and fill with zero.
@@ -135,16 +65,12 @@ impl Frame {
 
     /// Allocate contiguous physical frames.
     pub fn new_contiguous(frame_count: usize, align_log2: usize) -> HvResult<Self> {
-        unsafe {
-            FRAME_ALLOCATOR
-                .lock()
-                .alloc_contiguous(frame_count, align_log2)
-                .map(|start_paddr| Self {
-                    start_paddr,
-                    frame_count,
-                })
-                .ok_or(hv_err!(ENOMEM))
-        }
+        let (start_paddr, _) =
+            gb_allocator().alloc_contiguous(Tracked::assume_new(), frame_count, align_log2);
+        Ok(Self {
+            start_paddr: start_paddr.0,
+            frame_count,
+        })
     }
 
     /// Constructs a frame from a raw physical address without automatically calling the destructor.
@@ -202,20 +128,6 @@ impl Frame {
     }
 }
 
-impl Drop for Frame {
-    fn drop(&mut self) {
-        unsafe {
-            match self.frame_count {
-                0 => {} // Do not deallocate when use Frame::from_paddr()
-                1 => FRAME_ALLOCATOR.lock().dealloc(self.start_paddr),
-                _ => FRAME_ALLOCATOR
-                    .lock()
-                    .dealloc_contiguous(self.start_paddr, self.frame_count),
-            }
-        }
-    }
-}
-
 /// Initialize the physical frame allocator.
 pub(super) fn init() {
     let header = HvHeader::get();
@@ -230,8 +142,9 @@ pub(super) fn init() {
     let mem_pool_start_paddr = virt_to_phys(mem_pool_start_vaddr);
     let mem_pool_size = align_down(sys_config.hypervisor_memory.size as usize - used_size);
 
-    *FRAME_ALLOCATOR.lock() =
-        FrameAllocator::new(phys_encrypted(mem_pool_start_paddr), mem_pool_size);
+    init_global_allocator(mem_pool_start_paddr);
+    let page_count = mem_pool_size / PAGE_SIZE;
+    gb_allocator().init(page_count, Tracked::assume_new());
 
     info!(
         "Finish frame allocator init, va range: {:#x?}, pa range: {:#x?}",
