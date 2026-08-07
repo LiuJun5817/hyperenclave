@@ -330,12 +330,10 @@ impl Debug for Vcpu {
             .field("guest_regs", &self.guest_regs)
             .field("rip", &self.instr_pointer())
             .field("rsp", &self.stack_pointer())
-            .field("rflags", unsafe {
-                &RFlags::from_bits_retain(self.rflags())
-            })
-            .field("cr0", unsafe { &Cr0Flags::from_bits_retain(self.cr(0)) })
+            .field("rflags", &RFlags::from_bits_retain(self.rflags()))
+            .field("cr0", &Cr0Flags::from_bits_retain(self.cr(0)))
             .field("cr3", &self.cr(3))
-            .field("cr4", unsafe { &Cr4Flags::from_bits_retain(self.cr(4)) })
+            .field("cr4", &Cr4Flags::from_bits_retain(self.cr(4)))
             .field("cs", &self.vmcb.save.cs)
             .finish()
     }

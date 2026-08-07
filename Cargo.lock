@@ -390,7 +390,7 @@ checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
 [[package]]
 name = "verified-hv-mem"
 version = "0.1.0"
-source = "git+https://github.com/LiuJun5817/verified-hv-mem?rev=84db190#84db19046de2d690aa74fe70470d271e6bc051d7"
+source = "git+https://github.com/LiuJun5817/verified-hv-mem?rev=ec17cc5#ec17cc5588dc1c990774a9c8c30068c0a4858847"
 dependencies = [
  "verus_state_machines_macros",
  "vstd",
