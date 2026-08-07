@@ -411,7 +411,7 @@ impl InterruptInfo {
     pub fn from(int_type: InterruptType, vector: u8) -> Self {
         let mut bits = vector as u32;
         bits.set_bits(8..11, int_type as u32);
-        let mut info = unsafe { Self::from_bits_retain(bits) } | Self::VALID;
+        let mut info = Self::from_bits_retain(bits) | Self::VALID;
         if Self::has_error_code(vector) {
             info |= Self::ERROR_CODE;
         }
