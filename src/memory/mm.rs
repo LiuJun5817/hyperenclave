@@ -18,7 +18,7 @@ use alloc::collections::btree_map::{BTreeMap, Entry};
 use core::fmt::{Debug, Formatter, Result};
 
 use super::addr::{align_down, align_up};
-use super::{mapper::Mapper, paging::GenericPageTable, MemFlags};
+use super::{mapper::Mapper, paging::GenericPageTable, MemFlags, PhysAddr};
 use crate::error::HvResult;
 
 #[derive(Clone)]
@@ -47,6 +47,14 @@ impl<VA: From<usize> + Into<usize> + Copy> MemoryRegion<VA> {
             flags,
             mapper,
         }
+    }
+
+    /// Resolve the physical address corresponding to `vaddr` in this region.
+    ///
+    /// Page-table backends use this instead of depending on the internal
+    /// `Mapper` representation.
+    pub(crate) fn mapped_paddr(&self, vaddr: VA) -> PhysAddr {
+        self.mapper.map_fn(vaddr)
     }
 
     /// Test whether this region is overlap with `other`.

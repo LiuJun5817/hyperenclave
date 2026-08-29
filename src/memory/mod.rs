@@ -29,6 +29,7 @@ use core::ops::{Deref, DerefMut};
 use bitflags::bitflags;
 
 pub use addr::{GuestPhysAddr, GuestVirtAddr, HostPhysAddr, HostVirtAddr, PhysAddr, VirtAddr};
+pub(crate) use frame::gb_allocator;
 pub use frame::Frame;
 pub use heap::{HV_HEAP_SIZE, HV_HEAP_START_HVA};
 pub use mm::{MemoryRegion, MemorySet};

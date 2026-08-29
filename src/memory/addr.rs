@@ -46,6 +46,11 @@ pub fn phys_to_virt(paddr: PhysAddr) -> VirtAddr {
     (paddr & (SME_C_BIT_OFFSET.wrapping_sub(1))) + *PHYS_VIRT_OFFSET
 }
 
+/// Return the offset of HyperEnclave's direct physical-memory mapping.
+pub(crate) fn phys_virt_offset() -> usize {
+    *PHYS_VIRT_OFFSET
+}
+
 pub const fn align_down(addr: usize) -> usize {
     addr & !(PAGE_SIZE - 1)
 }

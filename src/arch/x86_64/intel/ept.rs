@@ -12,210 +12,34 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use core::{convert::TryFrom, fmt};
-
-use bit_field::BitField;
-use bitflags::bitflags;
-use numeric_enum_macro::numeric_enum;
+use alloc::{vec, vec::Vec};
+use core::{cmp::Ordering, marker::PhantomData};
 
 use libvmm::msr::Msr;
 use libvmm::vmx::flags::{EptpFlags, InvEptType, VmxEptVpidCap};
+use verified_hv_mem::{
+    address::{
+        addr::{PAddr, VAddr},
+        frame::{Frame as VerifiedFrame, FrameSize, MemAttr},
+    },
+    bitmap_allocator::bitmap_impl::BitAlloc1M,
+    page_table::{
+        pt_arch::{PTArch, PTArchLevel},
+        ExPageTable, PTConstants, PageTable as VerifiedPageTable, X86PTE,
+    },
+};
 
 use crate::error::HvResult;
-use crate::memory::addr::{GuestPhysAddr, HostPhysAddr};
+use crate::memory::addr::{phys_virt_offset, GuestPhysAddr, HostPhysAddr};
 use crate::memory::{
-    GenericPTE, Level4PageTable, Level4PageTableUnlocked, MemFlags, PageTableLevel, PagingInstr,
+    gb_allocator, GenericPageTable, GenericPageTableImmut, MemFlags, MemoryRegion, PageSize,
+    PagingError, PagingInstr, PagingResult,
 };
-use crate::memory::{PagingError, PagingResult};
 
-bitflags! {
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    struct EPTFlags: u64 {
-        /// Read access.
-        const READ =                1 << 0;
-        /// Write access.
-        const WRITE =               1 << 1;
-        /// execute access.
-        const EXECUTE =             1 << 2;
-        /// Ignore PAT memory type
-        const IGNORE_PAT =          1 << 6;
-        /// Specifies that the entry maps a huge frame instead of a page table. Only allowed in
-        /// P2 or P3 tables.
-        const HUGE_PAGE =           1 << 7;
-        /// If bit 6 of EPTP is 1, accessed flag for EPT.
-        const ACCESSED =            1 << 8;
-        /// If bit 6 of EPTP is 1, dirty flag for EPT;
-        const DIRTY =               1 << 9;
-        /// Execute access for user-mode linear addresses.
-        const EXECUTE_FOR_USER =    1 << 10;
-    }
-}
+const ENTRY_COUNT: usize = 512;
 
-numeric_enum! {
-    #[repr(u8)]
-    #[derive(Debug, PartialEq, Clone, Copy)]
-    enum EPTMemType {
-        Uncached = 0,
-        WriteCombining = 1,
-        WriteThrough = 4,
-        WriteProtected = 5,
-        WriteBack = 6,
-    }
-}
-
-#[derive(Clone)]
-pub struct EPTEntry(u64);
-
-impl TryFrom<MemFlags> for EPTFlags {
-    type Error = PagingError;
-
-    fn try_from(f: MemFlags) -> PagingResult<Self> {
-        if f.is_empty() {
-            return Ok(Self::empty());
-        }
-        let mut ret = Self::empty();
-        if f.contains(MemFlags::NO_PRESENT)
-            && (f.contains(MemFlags::READ)
-                || f.contains(MemFlags::WRITE)
-                || f.contains(MemFlags::EXECUTE))
-        {
-            error!("If the EPT-E is non-present, it cannot be R or W or E.");
-            return Err(PagingError::UnexpectedError);
-        }
-        if f.contains(MemFlags::READ) {
-            ret |= Self::READ;
-        }
-        if f.contains(MemFlags::WRITE) {
-            ret |= Self::WRITE;
-        }
-        if f.contains(MemFlags::EXECUTE) {
-            ret |= Self::EXECUTE;
-        }
-        Ok(ret)
-    }
-}
-
-impl From<EPTFlags> for MemFlags {
-    fn from(f: EPTFlags) -> Self {
-        if !f.contains(EPTFlags::READ)
-            && !f.contains(EPTFlags::WRITE)
-            && !f.contains(EPTFlags::EXECUTE)
-        {
-            return MemFlags::NO_PRESENT;
-        }
-        let mut ret = MemFlags::empty();
-        if f.contains(EPTFlags::READ) {
-            ret |= Self::READ;
-        }
-        if f.contains(EPTFlags::WRITE) {
-            ret |= Self::WRITE;
-        }
-        if f.contains(EPTFlags::EXECUTE) {
-            ret |= Self::EXECUTE;
-        }
-        ret
-    }
-}
-
-impl EPTMemType {
-    fn empty() -> Self {
-        Self::try_from(0).unwrap()
-    }
-}
-
-impl GenericPTE for EPTEntry {
-    fn addr(&self) -> HostPhysAddr {
-        (self.0.get_bits(12..52) << 12) as usize
-    }
-    fn flags(&self) -> MemFlags {
-        self.ept_flags().into()
-    }
-    fn is_unused(&self) -> bool {
-        self.0 == 0
-    }
-    fn is_present(&self) -> bool {
-        self.0.get_bits(0..3) != 0
-    }
-    fn is_leaf(&self) -> bool {
-        self.ept_flags().contains(EPTFlags::HUGE_PAGE)
-    }
-    fn is_young(&self) -> bool {
-        self.ept_flags().contains(EPTFlags::ACCESSED)
-    }
-
-    fn set_old(&mut self) {
-        let mem_type = self
-            .memory_type()
-            .map_err(|e| error!("Invalid mem_type: {:?}", e))
-            .unwrap_or(EPTMemType::empty());
-        let mut flags = self.ept_flags();
-        flags -= EPTFlags::ACCESSED;
-        self.set_flags_and_mem_type(flags, mem_type);
-    }
-    fn set_addr(&mut self, paddr: HostPhysAddr) {
-        self.0.set_bits(12..52, paddr as u64 >> 12);
-    }
-    fn set_flags(&mut self, flags: MemFlags, is_huge: bool) -> PagingResult {
-        let mut flags = EPTFlags::try_from(flags)?;
-        if is_huge {
-            flags |= EPTFlags::HUGE_PAGE;
-        }
-        self.set_flags_and_mem_type(flags, EPTMemType::WriteBack);
-        Ok(())
-    }
-    fn set_table(
-        &mut self,
-        paddr: HostPhysAddr,
-        _next_level: PageTableLevel,
-        is_present: bool,
-    ) -> PagingResult {
-        if !is_present {
-            error!("Illegal to set present for EPT intermediate entry");
-            return Err(PagingError::UnexpectedError);
-        }
-        self.set_addr(paddr);
-        self.set_flags_and_mem_type(
-            EPTFlags::READ | EPTFlags::WRITE | EPTFlags::EXECUTE,
-            EPTMemType::empty(),
-        );
-        Ok(())
-    }
-    fn set_present(&mut self) -> PagingResult {
-        error!("Illegal to set present for EPT-E");
-        Err(PagingError::UnexpectedError)
-    }
-    fn set_notpresent(&mut self) -> PagingResult {
-        error!("Illegal to set not-present for EPT-E");
-        Err(PagingError::UnexpectedError)
-    }
-    fn clear(&mut self) {
-        self.0 = 0
-    }
-}
-
-impl EPTEntry {
-    fn ept_flags(&self) -> EPTFlags {
-        EPTFlags::from_bits_truncate(self.0)
-    }
-    fn memory_type(&self) -> Result<EPTMemType, u8> {
-        EPTMemType::try_from(self.0.get_bits(3..6) as u8)
-    }
-    fn set_flags_and_mem_type(&mut self, flags: EPTFlags, mem_type: EPTMemType) {
-        self.0.set_bits(0..12, flags.bits());
-        self.0.set_bits(3..6, mem_type as u64);
-    }
-}
-
-impl fmt::Debug for EPTEntry {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("EPTEntry")
-            .field("raw", &self.0)
-            .field("hpaddr", &self.addr())
-            .field("flags", &self.ept_flags())
-            .field("memory_type", &self.memory_type())
-            .finish()
-    }
-}
+/// Intel's verified EPT entry implementation.
+pub use verified_hv_mem::page_table::X86PTE as EPTEntry;
 
 pub struct EPTInstr;
 
@@ -229,10 +53,9 @@ impl EPTInstr {
         if (*VMX_EPT_VIPD_CAP).contains(VmxEptVpidCap::MEMORY_TYPE_WB) {
             eptp_flags |= EptpFlags::MEMORY_TYPE_WB;
         }
-        if (*VMX_EPT_VIPD_CAP).contains(VmxEptVpidCap::ACCESSED_DIRTY) {
-            eptp_flags |= EptpFlags::ENABLE_ACCESSED_DIRTY;
-        }
 
+        // Keep EPT A/D disabled. The verified page-table model owns the entry
+        // memory exclusively, so hardware must not mutate entries behind it.
         let invept_type = if (*VMX_EPT_VIPD_CAP).contains(VmxEptVpidCap::INVEPT_TYPE_SINGLE_CONTEXT)
         {
             InvEptType::SingleContext
@@ -250,7 +73,7 @@ impl PagingInstr for EPTInstr {
     }
 
     fn flush(_vaddr: Option<usize>) {
-        // do nothing
+        // EPT invalidation is performed when the EPT pointer is installed.
     }
 }
 
@@ -259,6 +82,279 @@ lazy_static! {
         VmxEptVpidCap::from_bits_truncate(Msr::IA32_VMX_EPT_VPID_CAP.read());
 }
 
-pub type ExtendedPageTable = Level4PageTable<GuestPhysAddr, EPTEntry, EPTInstr>;
-pub type EnclaveExtendedPageTableUnlocked =
-    Level4PageTableUnlocked<GuestPhysAddr, EPTEntry, EPTInstr>;
+/// A four-level Intel EPT backed by the verified page-table implementation.
+pub struct VerifiedEpt<I: PagingInstr> {
+    inner: ExPageTable<BitAlloc1M, X86PTE>,
+    _phantom: PhantomData<I>,
+}
+
+impl<I: PagingInstr> VerifiedEpt<I> {
+    fn query_mapping(&self, gpaddr: GuestPhysAddr) -> PagingResult<(VAddr, VerifiedFrame)> {
+        self.inner
+            .query(VAddr(gpaddr))
+            .map_err(|_| PagingError::NotMapped(gpaddr))
+    }
+}
+
+impl<I: PagingInstr> GenericPageTableImmut for VerifiedEpt<I> {
+    type VA = GuestPhysAddr;
+
+    unsafe fn from_root(_root_paddr: HostPhysAddr) -> Self {
+        unimplemented!("verified-hv-mem cannot take ownership of an existing EPT root")
+    }
+
+    fn root_paddr(&self) -> HostPhysAddr {
+        self.inner.root().0
+    }
+
+    fn query(&self, gpaddr: GuestPhysAddr) -> PagingResult<(HostPhysAddr, MemFlags, PageSize)> {
+        let (vbase, frame) = self.query_mapping(gpaddr)?;
+        let page_size = frame_size_to_page_size(frame.size)?;
+        let paddr = frame.base.0 + (gpaddr - vbase.0);
+        let flags = attr_to_flags(frame.attr);
+        if flags.contains(MemFlags::NO_PRESENT) {
+            Err(PagingError::NotPresent((gpaddr, paddr, flags, page_size)))
+        } else {
+            Ok((paddr, flags, page_size))
+        }
+    }
+}
+
+impl<I: PagingInstr> GenericPageTable for VerifiedEpt<I> {
+    fn new() -> Self {
+        Self {
+            inner: ExPageTable::<BitAlloc1M, X86PTE>::new(gb_allocator(), intel_ept_constants()),
+            _phantom: PhantomData,
+        }
+    }
+
+    fn map(&mut self, region: &MemoryRegion<Self::VA>) -> PagingResult {
+        let attr = flags_to_attr(region.flags)?;
+        let mut gpaddr = region.start;
+        let mut size = region.size;
+
+        while size > 0 {
+            let hpaddr = region.mapped_paddr(gpaddr);
+            let page_size = select_page_size(gpaddr, hpaddr, size, region.flags);
+            let frame = VerifiedFrame {
+                base: PAddr(hpaddr),
+                size: page_size_to_frame_size(page_size),
+                attr,
+            };
+
+            self.inner
+                .map(gb_allocator(), VAddr(gpaddr), frame)
+                .map_err(|_| {
+                    PagingError::AlreadyMapped((gpaddr, hpaddr, region.flags, page_size))
+                })?;
+
+            gpaddr += page_size as usize;
+            size -= page_size as usize;
+        }
+        Ok(())
+    }
+
+    fn unmap(
+        &mut self,
+        region: &MemoryRegion<Self::VA>,
+    ) -> PagingResult<Vec<(HostPhysAddr, PageSize)>> {
+        let mut unmapped = Vec::new();
+        let mut gpaddr = region.start;
+        let mut size = region.size;
+
+        while size > 0 {
+            let (vbase, frame) = self.query_mapping(gpaddr)?;
+            let page_size = frame_size_to_page_size(frame.size)?;
+            let flags = attr_to_flags(frame.attr);
+            if vbase.0 != gpaddr || page_size as usize > size {
+                return Err(PagingError::MappedToHugePage((
+                    gpaddr,
+                    frame.base.0,
+                    flags,
+                    page_size,
+                )));
+            }
+
+            let removed = self
+                .inner
+                .unmap(gb_allocator(), vbase)
+                .map_err(|_| PagingError::NotMapped(gpaddr))?;
+            unmapped.push((removed.base.0, page_size));
+            gpaddr += page_size as usize;
+            size -= page_size as usize;
+        }
+        Ok(unmapped)
+    }
+
+    fn update(&mut self, region: &MemoryRegion<Self::VA>) -> PagingResult {
+        let gpaddr = region.start;
+        let (vbase, old_frame) = self.query_mapping(gpaddr)?;
+        let page_size = frame_size_to_page_size(old_frame.size)?;
+        let old_flags = attr_to_flags(old_frame.attr);
+
+        match (page_size as usize).cmp(&region.size) {
+            Ordering::Greater => {
+                return Err(PagingError::MappedToHugePage((
+                    gpaddr,
+                    old_frame.base.0,
+                    old_flags,
+                    page_size,
+                )))
+            }
+            Ordering::Less => {
+                return Err(PagingError::AlreadyMapped((
+                    gpaddr,
+                    old_frame.base.0,
+                    old_flags,
+                    page_size,
+                )))
+            }
+            Ordering::Equal => {}
+        }
+        if vbase.0 != gpaddr {
+            return Err(PagingError::MappedToHugePage((
+                gpaddr,
+                old_frame.base.0,
+                old_flags,
+                page_size,
+            )));
+        }
+
+        let new_frame = VerifiedFrame {
+            base: PAddr(page_size.align_down(region.mapped_paddr(gpaddr))),
+            size: old_frame.size,
+            attr: flags_to_attr(region.flags)?,
+        };
+        let rollback_frame = VerifiedFrame {
+            base: old_frame.base,
+            size: old_frame.size,
+            attr: old_frame.attr,
+        };
+
+        self.inner
+            .unmap(gb_allocator(), vbase)
+            .map_err(|_| PagingError::NotMapped(gpaddr))?;
+        if self.inner.map(gb_allocator(), vbase, new_frame).is_err() {
+            let rollback = self.inner.map(gb_allocator(), vbase, rollback_frame);
+            debug_assert!(rollback.is_ok(), "failed to roll back an EPT update");
+            return Err(PagingError::NoMemory);
+        }
+        Ok(())
+    }
+
+    fn clone(&self) -> Self {
+        unimplemented!("verified-hv-mem does not support cloning an owned EPT")
+    }
+
+    unsafe fn activate(&self) {
+        I::activate(self.root_paddr())
+    }
+
+    fn flush(&self, gpaddr: Option<Self::VA>) {
+        I::flush(gpaddr)
+    }
+}
+
+pub type ExtendedPageTable = VerifiedEpt<EPTInstr>;
+pub type EnclaveExtendedPageTableUnlocked = VerifiedEpt<EPTInstr>;
+
+fn intel_ept_constants() -> PTConstants {
+    PTConstants {
+        arch: PTArch(vec![
+            PTArchLevel {
+                entry_count: ENTRY_COUNT,
+                frame_size: FrameSize::Size512G,
+            },
+            PTArchLevel {
+                entry_count: ENTRY_COUNT,
+                frame_size: FrameSize::Size1G,
+            },
+            PTArchLevel {
+                entry_count: ENTRY_COUNT,
+                frame_size: FrameSize::Size2M,
+            },
+            PTArchLevel {
+                entry_count: ENTRY_COUNT,
+                frame_size: FrameSize::Size4K,
+            },
+        ]),
+        huge_pages: true,
+        hva_to_pa_offset: phys_virt_offset(),
+    }
+}
+
+fn flags_to_attr(flags: MemFlags) -> PagingResult<MemAttr> {
+    let has_permissions = flags.intersects(MemFlags::READ | MemFlags::WRITE | MemFlags::EXECUTE);
+    if flags.contains(MemFlags::NO_PRESENT) && has_permissions {
+        error!("a non-present EPT mapping cannot carry R/W/X permissions");
+        return Err(PagingError::UnexpectedError);
+    }
+
+    let non_present = flags.contains(MemFlags::NO_PRESENT);
+    Ok(MemAttr {
+        readable: !non_present && flags.contains(MemFlags::READ),
+        writable: !non_present && flags.contains(MemFlags::WRITE),
+        executable: !non_present && flags.contains(MemFlags::EXECUTE),
+        device: flags.contains(MemFlags::IO),
+    })
+}
+
+fn attr_to_flags(attr: MemAttr) -> MemFlags {
+    let mut flags = MemFlags::empty();
+    if attr.readable {
+        flags |= MemFlags::READ;
+    }
+    if attr.writable {
+        flags |= MemFlags::WRITE;
+    }
+    if attr.executable {
+        flags |= MemFlags::EXECUTE;
+    }
+    if attr.device {
+        flags |= MemFlags::IO;
+    }
+    if !attr.readable && !attr.writable && !attr.executable {
+        flags |= MemFlags::NO_PRESENT;
+    }
+    flags
+}
+
+fn select_page_size(
+    gpaddr: GuestPhysAddr,
+    hpaddr: HostPhysAddr,
+    remaining: usize,
+    flags: MemFlags,
+) -> PageSize {
+    if PageSize::Size1G.is_aligned(gpaddr)
+        && PageSize::Size1G.is_aligned(hpaddr)
+        && remaining >= PageSize::Size1G as usize
+        && !flags.contains(MemFlags::NO_HUGEPAGES)
+    {
+        PageSize::Size1G
+    } else if PageSize::Size2M.is_aligned(gpaddr)
+        && PageSize::Size2M.is_aligned(hpaddr)
+        && remaining >= PageSize::Size2M as usize
+        && !flags.contains(MemFlags::NO_HUGEPAGES)
+    {
+        PageSize::Size2M
+    } else {
+        PageSize::Size4K
+    }
+}
+
+fn page_size_to_frame_size(size: PageSize) -> FrameSize {
+    match size {
+        PageSize::Size4K => FrameSize::Size4K,
+        PageSize::Size2M => FrameSize::Size2M,
+        PageSize::Size1G => FrameSize::Size1G,
+    }
+}
+
+fn frame_size_to_page_size(size: FrameSize) -> PagingResult<PageSize> {
+    match size {
+        FrameSize::Size4K => Ok(PageSize::Size4K),
+        FrameSize::Size2M => Ok(PageSize::Size2M),
+        FrameSize::Size1G => Ok(PageSize::Size1G),
+        _ => Err(PagingError::UnexpectedError),
+    }
+}
