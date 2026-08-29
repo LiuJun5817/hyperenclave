@@ -14,7 +14,9 @@
 
 //! Physical memory allocation.
 
-use super::addr::{align_down, align_up, is_aligned, phys_encrypted, phys_to_virt, PhysAddr};
+use super::addr::{
+    align_down, align_up, is_aligned, phys_encrypted, phys_to_virt, PhysAddr, VirtAddr,
+};
 use crate::config::HvSystemConfig;
 use crate::consts::{PAGE_SIZE, PER_CPU_SIZE};
 use crate::error::HvResult;
@@ -30,8 +32,9 @@ use verified_hv_mem::{address::addr::PAddr, global_allocator::GbAlloc};
 
 static GB_ALLOCATOR: Once<GbAlloc> = Once::new();
 
-pub fn init_global_allocator(base: PhysAddr) -> &'static GbAlloc {
-    GB_ALLOCATOR.call_once(|| GbAlloc::default(PAddr(base)))
+/// Initialize the allocator with the HVA base of its direct-mapped memory pool.
+pub fn init_global_allocator(base_vaddr: VirtAddr) -> &'static GbAlloc {
+    GB_ALLOCATOR.call_once(|| GbAlloc::default(PAddr(base_vaddr)))
 }
 
 pub fn gb_allocator() -> &'static GbAlloc {
@@ -49,9 +52,9 @@ pub struct Frame {
 impl Frame {
     /// Allocate one physical frame.
     pub fn new() -> HvResult<Self> {
-        let (start_paddr, _) = gb_allocator().alloc(Tracked::assume_new());
+        let (start_vaddr, _) = gb_allocator().alloc(Tracked::assume_new());
         Ok(Self {
-            start_paddr: start_paddr.0,
+            start_paddr: phys_encrypted(virt_to_phys(start_vaddr.0)),
             frame_count: 1,
         })
     }
@@ -65,10 +68,10 @@ impl Frame {
 
     /// Allocate contiguous physical frames.
     pub fn new_contiguous(frame_count: usize, align_log2: usize) -> HvResult<Self> {
-        let (start_paddr, _) =
+        let (start_vaddr, _) =
             gb_allocator().alloc_contiguous(Tracked::assume_new(), frame_count, align_log2);
         Ok(Self {
-            start_paddr: start_paddr.0,
+            start_paddr: phys_encrypted(virt_to_phys(start_vaddr.0)),
             frame_count,
         })
     }
@@ -142,7 +145,7 @@ pub(super) fn init() {
     let mem_pool_start_paddr = virt_to_phys(mem_pool_start_vaddr);
     let mem_pool_size = align_down(sys_config.hypervisor_memory.size as usize - used_size);
 
-    init_global_allocator(mem_pool_start_paddr);
+    init_global_allocator(mem_pool_start_vaddr);
     let page_count = mem_pool_size / PAGE_SIZE;
     gb_allocator().init(page_count, Tracked::assume_new());
 
