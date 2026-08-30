@@ -1,6 +1,8 @@
 # Commands:
 #   make build                  Build
 #   make test                   Run `cargo test`
+#   make test-intel             Run Intel tests and a QEMU/KVM late-launch test
+#   make stop-intel-qemu        Stop a QEMU VM left by `make test-intel`
 #   make format                 Format the code
 #   make format-check           Check whether codes needs format
 #   make clippy                 Run `cargo clippy`
@@ -120,6 +122,23 @@ clippy:
 .PHONY: test
 test:
 	cargo test --features "$(features)"
+
+.PHONY: test-intel test-intel-qemu
+test-intel: test-intel-qemu
+
+test-intel-qemu:
+	+PATH="$(HOME)/.cargo/bin:$$PATH" $(MAKE) ARCH=x86_64 VENDOR=intel SME=off INTR=on test
+	+PATH="$(HOME)/.cargo/bin:$$PATH" $(MAKE) ARCH=x86_64 VENDOR=intel SME=off INTR=on LOG=info elf
+	@HE_ELF="$(abspath target/x86_64/release/rust-hypervisor)" \
+		HE_DRIVER_DIR="$(abspath ../hyperenclave-driver)" \
+		HE_VM_DIR="$(abspath ../hyperenclave-vm)" \
+		HE_SSH_KEY="$(abspath .hevm-key)" \
+		bash scripts/test_intel_qemu.sh run
+
+.PHONY: stop-intel-qemu
+stop-intel-qemu:
+	@HE_VM_DIR="$(abspath ../hyperenclave-vm)" \
+		bash scripts/test_intel_qemu.sh stop
 
 .PHONY: format-check
 format-check:

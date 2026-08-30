@@ -1,1 +1,6 @@
 /target
+/.hevm-grub.cfg
+/.hevm-key
+/.hevm-key.pub
+/.hevm-meta-data
+/.hevm-user-data

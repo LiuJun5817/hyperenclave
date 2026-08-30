@@ -12,16 +12,16 @@ SECTIONS
 	}
 
 	. = ALIGN(4K);
-	.bss		: { *(.bss .bss.*) *(COMMON) }
+	.bss		: { *(.bss .bss.* .lbss .lbss.*) *(COMMON) }
 
 	. = ALIGN(16);
 	.text		: { *(.text .text.*) }
 
 	. = ALIGN(16);
-	.rodata		: { *(.rodata .rodata.*) }
+	.rodata		: { *(.rodata .rodata.* .lrodata .lrodata.*) }
 
 	. = ALIGN(16);
-	.data		: { *(.data .data.*) }
+	.data		: { *(.data .data.* .ldata .ldata.*) }
 
 	. = ALIGN(4K);
 	.got		: { *(.got .got.*) }
